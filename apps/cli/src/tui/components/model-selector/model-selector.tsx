@@ -5,7 +5,7 @@ import { useDialogKeyboard } from "@opentui-ui/dialog/react";
 import { useMemo, useState } from "react";
 import { useDialogPalette } from "../../hooks/use-theme";
 import { ProviderRow } from "./provider-row";
-import { getTermuxCursorStyle } from "../utils/termux-cursor-style";
+import { getTermuxCursorStyle } from "../../utils/termux-cursor-style";
 
 export interface ModelOption {
 	key: string;
