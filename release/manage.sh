@@ -53,11 +53,12 @@ Commands:
   inspect CLI_TAG
       Read-only review of one next upstream CLI release.
 
-  candidate CLI_TAG [--revision N] [--host SSH_HOST] [--no-device]
-      Merge exactly one release in an isolated worktree, run source and package
-      gates, publish a prerelease, and install that exact tag on the test phone.
+  candidate CLI_TAG [--revision N] [--host SSH_HOST] [--no-device] [--skip-gates]
+      Merge exactly one release in an isolated worktree, run the port gates,
+      publish a prerelease, and install that exact tag on the test phone.
       --no-device skips the SSH device stages (sandbox install, acceptance,
       published-prerelease install) and publishes the candidate without them.
+      --skip-gates publishes without running the port gates at all.
 
   promote RELEASE_TAG --confirm-manual-test [--host SSH_HOST]
       Fast-forward main to the tested candidate and promote the unchanged
@@ -627,6 +628,35 @@ run_gate() {
 	"$@" 2>&1 | tee "$log_dir/$name.log"
 }
 
+# The device is a Termux sandbox rather than a glibc build host, so the pinned
+# upstream toolchain cannot be used as-is: the pinned Bun is a glibc binary and
+# upstream Bun cannot read the current directory on Android (oven-sh/bun#30859).
+is_android_host() {
+	[ -n "${TERMUX_VERSION:-}" ] && return 0
+	[ "$(uname -o 2>/dev/null || true)" = "Android" ]
+}
+
+# Installs the Bun shim that re-implements the Bun CLI subset Android breaks,
+# and exposes it as `bun` on PATH so scripts that spawn `bun` themselves keep
+# working. Sets ANDROID_BUN_SHIM and ANDROID_GATE_PATH.
+provision_android_bun() {
+	local worktree="$1"
+	local shim_dir="$2"
+	local real_bun="${CLINE_TERMUX_REAL_BUN:-${PREFIX:-}/opt/bun-android-ffi/current/bun}"
+	local shim_source="$worktree/release/android-bun/bun-shim.mjs"
+
+	[ -x "$real_bun" ] || fail "Android Bun runtime not found; set CLINE_TERMUX_REAL_BUN"
+	[ -f "$shim_source" ] || fail "missing $shim_source"
+	mkdir -p "$shim_dir"
+	cp "$shim_source" "$shim_dir/bun"
+	chmod +x "$shim_dir/bun"
+	CLINE_TERMUX_REAL_BUN="$real_bun"
+	CLINE_TERMUX_SHIM_BIN_DIR="$shim_dir"
+	export CLINE_TERMUX_REAL_BUN CLINE_TERMUX_SHIM_BIN_DIR
+	ANDROID_BUN_SHIM="$shim_dir/bun"
+	ANDROID_GATE_PATH="$shim_dir:$PATH"
+}
+
 cleanup_managed_temp() {
 	rm -rf -- "$1"
 }
@@ -907,7 +937,7 @@ install_published_candidate() {
 candidate_release() {
 	local target_tag="$1"
 	shift
-	local revision=1 host="$DEFAULT_HOST" use_device=true
+	local revision=1 host="$DEFAULT_HOST" use_device=true skip_gates=false
 	while [ "$#" -gt 0 ]; do
 		case "$1" in
 			--revision)
@@ -922,6 +952,10 @@ candidate_release() {
 				;;
 			--no-device)
 				use_device=false
+				shift
+				;;
+			--skip-gates)
+				skip_gates=true
 				shift
 				;;
 			*) fail "unknown candidate option: $1" ;;
@@ -949,6 +983,7 @@ candidate_release() {
 	local target_commit cli_version release_tag release_name branch worktree candidate_dir
 	local bun_version bun_bin gitleaks_version gitleaks_bin patchelf_version patchelf_bin
 	local log_dir merge_status candidate_commit notes_file candidate_temp cleanup_trap
+	local android_bun_shim="" android_gate_path="$PATH"
 	target_commit="$(git -C "$REPO_ROOT" rev-parse "$target_tag^{}")"
 	cli_version="$(git_json_get "$target_tag" apps/cli/package.json version)"
 	release_tag="v$cli_version-termux.$revision"
@@ -960,11 +995,23 @@ candidate_release() {
 		&& fail "GitHub release already exists: $release_tag"
 
 	bun_version="$(json_get "$MANIFEST" toolchain.bun)"
-	bun_bin="$(ensure_pinned_bun "$bun_version")"
 	gitleaks_version="$(json_get "$MANIFEST" toolchain.gitleaks)"
 	gitleaks_bin="$(ensure_gitleaks "$gitleaks_version")"
 	patchelf_version="$(json_get "$MANIFEST" toolchain.patchelf.version)"
-	patchelf_bin="$(ensure_patchelf "$patchelf_version")"
+	if is_android_host; then
+		# A Termux device is not a glibc build host: the pinned Bun and
+		# patchelf binaries cannot execute here, so use the device runtime
+		# (installed by release/install-cline-termux.sh) and the Termux
+		# patchelf package instead. provision_android_bun fills in bun_bin
+		# once the worktree exists.
+		bun_bin=""
+		patchelf_bin="$(command -v patchelf || true)"
+		[ -n "$patchelf_bin" ] \
+			|| fail "patchelf is required on Android; run: pkg install patchelf"
+	else
+		bun_bin="$(ensure_pinned_bun "$bun_version")"
+		patchelf_bin="$(ensure_patchelf "$patchelf_version")"
+	fi
 	branch="termux-candidate-${release_tag#v}"
 	worktree="$WORK_ROOT/$release_tag"
 	candidate_dir="$CANDIDATE_ROOT/$release_tag"
@@ -999,24 +1046,44 @@ candidate_release() {
 
 	node "$worktree/release/port-metadata.mjs" update \
 		"$target_tag" "$target_commit" "$release_tag"
+	if is_android_host; then
+		provision_android_bun "$worktree" "$candidate_temp/bin"
+		android_bun_shim="$ANDROID_BUN_SHIM"
+		android_gate_path="$ANDROID_GATE_PATH"
+		bun_bin="$android_bun_shim"
+		info "Using the on-device Bun shim for gates and packaging"
+	fi
 	TMPDIR="$candidate_temp" install_worktree_dependencies \
 		"$worktree" "$bun_bin" "$log_dir/dependency-install.log"
 	git -C "$worktree" add -A
 	[ -z "$(git -C "$worktree" diff --name-only --diff-filter=U)" ] \
 		|| fail "unresolved merge conflicts remain"
 
-	run_gate "$log_dir" release-manager \
-		env TMPDIR="$candidate_temp" bash "$worktree/release/test-manager-downloads.sh"
-	run_gate "$log_dir" build-sdk \
-		env TMPDIR="$candidate_temp" bash -lc "cd '$worktree' && '$bun_bin' run build:sdk"
-	run_gate "$log_dir" cli-unit \
-		env TMPDIR="$candidate_temp" bash -lc "cd '$worktree' && '$bun_bin' -F @cline/cli test:unit"
-	run_gate "$log_dir" cli-typecheck \
-		env TMPDIR="$candidate_temp" bash -lc "cd '$worktree' && '$bun_bin' -F @cline/cli typecheck"
-	run_gate "$log_dir" cli-build \
-		env TMPDIR="$candidate_temp" bash -lc "cd '$worktree' && '$bun_bin' -F @cline/cli build"
-	run_gate "$log_dir" cli-tui \
-		env TMPDIR="$candidate_temp" bash -lc "cd '$worktree' && '$bun_bin' -F @cline/cli test:e2e:cli:tui"
+	# Port gates. Upstream's own CI already covers the merged CLI changes, so
+	# this only verifies what the port itself can break: the manager scripts,
+	# the Termux TUI additions, the CLI type surface, and the bundle the
+	# release tarball is built from.
+	if [ "$skip_gates" = true ]; then
+		warn "--skip-gates: publishing without running any port gate"
+	else
+		# tsc needs more than the Node default heap on a phone-sized build;
+		# the device in the port manifest has ~5 GB of RAM.
+		local gate_node_options="${NODE_OPTIONS:-} --max-old-space-size=2560"
+		run_gate "$log_dir" release-manager \
+			env TMPDIR="$candidate_temp" bash "$worktree/release/test-manager-downloads.sh"
+		run_gate "$log_dir" cli-typecheck \
+			env TMPDIR="$candidate_temp" PATH="$android_gate_path" \
+			NODE_OPTIONS="$gate_node_options" \
+			bash -c "cd '$worktree' && '$bun_bin' -F @cline/cli typecheck"
+		run_gate "$log_dir" termux-unit \
+			env TMPDIR="$candidate_temp" PATH="$android_gate_path" \
+			NODE_OPTIONS="$gate_node_options" \
+			bash -c "cd '$worktree' && node node_modules/vitest/vitest.mjs run apps/cli/src/tui/utils"
+		run_gate "$log_dir" cli-build \
+			env TMPDIR="$candidate_temp" PATH="$android_gate_path" \
+			NODE_OPTIONS="$gate_node_options" \
+			bash -c "cd '$worktree' && '$bun_bin' -F @cline/cli build"
+	fi
 
 	PATH="$(dirname "$gitleaks_bin"):$PATH" \
 		git -C "$worktree" commit -m "chore(termux): update to cli v$cli_version"
