@@ -125,18 +125,22 @@ recorded in `release/port-manifest.json`.
 
 ## Termux TUI Defaults
 
-This port adjusts three mobile terminal behaviors by default:
+This port adjusts four mobile terminal behaviors by default:
 
 ```text
 CLINE_TUI_TERMUX_DIALOG_SAFE_AREA_BOTTOM=15%
 CLINE_TUI_TERMUX_MOUSE=off
 CLINE_TUI_TERMUX_TOUCH_SCROLL=transcript
+CLINE_TUI_TERMUX_CURSOR=line
 ```
 
 The first keeps dialogs such as `/settings`, `/model`, and `/history` higher
 above the Android keyboard. The second lets Termux open the soft keyboard when
 the screen is touched. The third maps Termux finger scrolling to the transcript;
-use `Alt+Up` and `Alt+Down` to browse prompt history.
+use `Alt+Up` and `Alt+Down` to browse prompt history. The fourth replaces
+OpenTUI's default block cursor with the thin vertical line Termux uses natively
+(`CLINE_TUI_TERMUX_CURSOR=block` restores the block, `=underline` uses an
+underline; `CLINE_TUI_TERMUX_CURSOR_BLINK=off` makes it steady).
 
 To restore OpenTUI mouse tracking:
 

@@ -3,6 +3,7 @@ import type { ChoiceContext } from "@opentui-ui/dialog";
 import { useDialogKeyboard } from "@opentui-ui/dialog/react";
 import { useRef, useState } from "react";
 import { useDialogPalette } from "../../hooks/use-theme";
+import { getTermuxCursorStyle } from "../../utils/termux-cursor-style";
 
 export function AskQuestionContent(
 	props: ChoiceContext<string | null> & {
@@ -123,6 +124,7 @@ export function AskQuestionContent(
 							placeholder="Type a response..."
 							flexGrow={1}
 							focused
+							cursorStyle={getTermuxCursorStyle()}
 						/>
 					) : (
 						<text fg="gray">

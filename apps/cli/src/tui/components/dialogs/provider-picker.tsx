@@ -33,6 +33,7 @@ import {
 	updateProviderConfigValue,
 } from "../../utils/provider-config-values";
 import { getProviderSection } from "../../utils/provider-sections";
+import { getTermuxCursorStyle } from "../../utils/termux-cursor-style";
 import { canContinueLocalCliSetup } from "../../views/onboarding/model";
 import {
 	getSearchableListRowsWindow,
@@ -152,6 +153,7 @@ export function ProviderPickerContent(
 					placeholder="Search providers..."
 					flexGrow={1}
 					focused
+					cursorStyle={getTermuxCursorStyle()}
 				/>
 			</box>
 
@@ -638,6 +640,7 @@ export function ProviderConfigInputContent(
 								placeholder={placeholder}
 								flexGrow={1}
 								focused={focusedField === key}
+								cursorStyle={getTermuxCursorStyle()}
 							/>
 						</box>
 					</box>
@@ -1023,6 +1026,7 @@ export function OAuthApiKeyInputContent(
 						placeholder="Paste your API key"
 						flexGrow={1}
 						focused
+						cursorStyle={getTermuxCursorStyle()}
 					/>
 				</box>
 			</box>

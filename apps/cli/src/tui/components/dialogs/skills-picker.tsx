@@ -4,6 +4,7 @@ import { useDialogKeyboard } from "@opentui-ui/dialog/react";
 import { useMemo, useRef, useState } from "react";
 import type { SlashCommandRegistryEntry } from "../../commands/slash-command-registry";
 import { useDialogPalette } from "../../hooks/use-theme";
+import { getTermuxCursorStyle } from "../../utils/termux-cursor-style";
 
 export const SKILLS_MARKETPLACE_ACTION = "__skills_marketplace__";
 export const SKILLS_MARKETPLACE_URL = "https://skills.sh/";
@@ -121,6 +122,7 @@ export function SkillsPickerContent(props: SkillsPickerContentProps) {
 					placeholder="Search skills..."
 					flexGrow={1}
 					focused
+					cursorStyle={getTermuxCursorStyle()}
 				/>
 			</box>
 
