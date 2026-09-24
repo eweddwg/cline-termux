@@ -1,8 +1,8 @@
 # Cline Termux
 
-[![Latest release](https://img.shields.io/github/v/release/IChouChiang/cline-termux?label=release)](https://github.com/IChouChiang/cline-termux/releases/latest)
+[![Latest release](https://img.shields.io/github/v/release/eweddwg/cline-termux?label=release)](https://github.com/eweddwg/cline-termux/releases/latest)
 [![Platform](https://img.shields.io/badge/platform-Android%20aarch64%20(Termux)-3ddc84)](https://termux.dev)
-[![License](https://img.shields.io/github/license/IChouChiang/cline-termux)](LICENSE)
+[![License](https://img.shields.io/github/license/eweddwg/cline-termux)](LICENSE)
 
 Unofficial native Termux port of the Cline CLI TUI for Android `aarch64`.
 
@@ -24,7 +24,7 @@ Command: cline
 ## Install
 
 ```sh
-curl -fsSL https://github.com/IChouChiang/cline-termux/releases/latest/download/install-cline-termux.sh | bash
+curl -fsSL https://github.com/eweddwg/cline-termux/releases/latest/download/install-cline-termux.sh | bash
 ```
 
 Then run:
@@ -78,8 +78,8 @@ installer keeps the previous version as an offline rollback path and removes
 older trees. To keep more, or to keep everything:
 
 ```sh
-curl -fsSL https://github.com/IChouChiang/cline-termux/releases/latest/download/install-cline-termux.sh | bash -s -- --keep 3
-curl -fsSL https://github.com/IChouChiang/cline-termux/releases/latest/download/install-cline-termux.sh | bash -s -- --no-prune
+curl -fsSL https://github.com/eweddwg/cline-termux/releases/latest/download/install-cline-termux.sh | bash -s -- --keep 3
+curl -fsSL https://github.com/eweddwg/cline-termux/releases/latest/download/install-cline-termux.sh | bash -s -- --no-prune
 ```
 
 The same settings are available as `CLINE_TERMUX_KEEP_VERSIONS` and
