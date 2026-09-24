@@ -1,0 +1,116 @@
+# termux-release
+#
+# Builds and publishes the Cline Termux Android/ARM64 release tarball entirely
+# on GitHub Actions (ubuntu-latest). No phone is used as a build input.
+#
+# The "bump commit" is the trigger: editing release/port-manifest.json
+# (termux.releaseTag + termux.revision) and/or apps/cli/package.json on the
+# default branch tells CI to build and publish a new Termux release for that
+# tag. workflow_dispatch exists for rerunning a build manually.
+#
+# Everything in the build runs with a native Linux Bun, so the Android-only
+# workarounds (bun-shim.mjs, --backend=copyfile, manual symlinks) are not
+# needed here. The @opentui/core-android-arm64 native library is downloaded
+# from a pinned, checksum-verified GitHub release asset during staging.
+name: termux-release
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "release/port-manifest.json"
+      - "apps/cli/package.json"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: termux-release
+  cancel-in-progress: false
+
+env:
+  BUN_VERSION: "1.3.13"
+  NODE_VERSION: "24.x"
+
+jobs:
+  build-and-release:
+    name: Build & publish Cline Termux release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Resolve release version from port-manifest
+        id: version
+        run: |
+          set -euo pipefail
+          TAG=$(node -p "require('./release/port-manifest.json').termux.releaseTag")
+          CLI=$(node -p "require('./release/port-manifest.json').upstream.cliVersion")
+          if ! printf '%s\n' "$TAG" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+-termux\.[0-9]+$'; then
+            echo "::error::port-manifest termux.releaseTag '$TAG' is not a valid termux release tag (expected vX.Y.Z-termux.N)"
+            exit 1
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "cli=$CLI" >> "$GITHUB_OUTPUT"
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Build SDK packages
+        run: bun run build:sdk
+
+      - name: Build & stage termux release tarball
+        run: |
+          bash release/build-termux-release.sh --release "${{ steps.version.outputs.tag }}"
+
+      - name: Verify build output
+        run: |
+          set -euo pipefail
+          TAG="${{ steps.version.outputs.tag }}"
+          TARBALL="release/dist/cline-termux-aarch64-${TAG}.tar.gz"
+          SHA="release/dist/cline-termux-aarch64-${TAG}.tar.gz.sha256"
+          test -f "$TARBALL" || { echo "::error::missing $TARBALL"; exit 1; }
+          test -f "$SHA" || { echo "::error::missing $SHA"; exit 1; }
+          (cd release/dist && sha256sum -c "$(basename "$SHA")")
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          TAG="${{ steps.version.outputs.tag }}"
+          CLI="${{ steps.version.outputs.cli }}"
+          TARBALL="release/dist/cline-termux-aarch64-${TAG}.tar.gz"
+          SHA="release/dist/cline-termux-aarch64-${TAG}.tar.gz.sha256"
+
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG already exists; deleting to recreate."
+            gh release delete "$TAG" --yes --cleanup-tag
+          fi
+
+          gh release create "$TAG" "$TARBALL" "$SHA" \
+            --title "$TAG" \
+            --notes "$(cat <<EOF
+**Cline Termux** — Android/ARM64 release built on GitHub Actions.
+
+- Tarball: \`cline-termux-aarch64-${TAG}.tar.gz\` (deterministic, checksummed)
+- Install on a phone:
+  \`curl -fsSL https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/main/release/install-cline-termux.sh | bash -s -- --repo ${GITHUB_REPOSITORY} --version ${TAG}\`
+- Upstream Cline CLI: ${CLI}
+
+Published from commit ${GITHUB_SHA}.
+EOF
+          )"
