@@ -1,5 +1,6 @@
 import "opentui-spinner/react";
 import { useEffect, useState } from "react";
+import { getTermuxCursorStyle } from "../utils/termux-cursor-style";
 import { useSession } from "../contexts/session-context";
 import { useTheme } from "../hooks/use-theme";
 import type { QueuedPromptItem } from "../types";
@@ -77,6 +78,7 @@ function QueuedPromptRow(props: {
 }) {
 	const { item, selected, editing } = props;
 	const theme = useTheme();
+	const termuxCursorStyle = getTermuxCursorStyle();
 	const [editValue, setEditValue] = useState(item.prompt);
 
 	useEffect(() => {
@@ -112,6 +114,7 @@ function QueuedPromptRow(props: {
 					focusedBackgroundColor={theme.selection}
 					textColor={theme.textOnSelection}
 					cursorColor={theme.textOnSelection}
+					cursorStyle={termuxCursorStyle}
 					placeholderColor={theme.textOnSelection}
 					focused
 					flexGrow={1}

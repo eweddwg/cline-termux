@@ -5,6 +5,7 @@ import { useDialogKeyboard } from "@opentui-ui/dialog/react";
 import { useMemo, useState } from "react";
 import { useDialogPalette } from "../../hooks/use-theme";
 import { ProviderRow } from "./provider-row";
+import { getTermuxCursorStyle } from "../utils/termux-cursor-style";
 
 export interface ModelOption {
 	key: string;
@@ -120,6 +121,7 @@ export function ModelIdInputContent(
 						placeholder="provider/model"
 						flexGrow={1}
 						focused={!onProvider}
+						cursorStyle={getTermuxCursorStyle()}
 					/>
 				</box>
 				{error && <text fg="red">{error}</text>}
@@ -256,6 +258,7 @@ export function ModelSelectorContent(
 							placeholder=""
 							flexGrow={1}
 							focused
+							cursorStyle={getTermuxCursorStyle()}
 						/>
 					</box>
 					{customModelError && <text fg="red">{customModelError}</text>}
@@ -284,6 +287,7 @@ export function ModelSelectorContent(
 					placeholder="Search models..."
 					flexGrow={1}
 					focused
+					cursorStyle={getTermuxCursorStyle()}
 				/>
 			</box>
 

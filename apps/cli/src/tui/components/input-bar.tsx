@@ -12,6 +12,7 @@ import {
 	readImmediateImagePasteAttachment,
 } from "../utils/image-paste";
 import { shouldCompactPastedText } from "../utils/pasted-snippets";
+import { getTermuxCursorStyle } from "../utils/termux-cursor-style";
 
 export type TextareaHandle = Pick<
 	TextareaRenderable,
@@ -73,6 +74,7 @@ export function InputBar(props: InputBarProps) {
 	} = props;
 	const localRef = useRef<TextareaHandle | null>(null);
 	const inputRef = props.textareaRef ?? localRef;
+	const termuxCursorStyle = getTermuxCursorStyle();
 
 	const onSubmitRef = useRef(onSubmit);
 	onSubmitRef.current = onSubmit;
@@ -231,6 +233,7 @@ export function InputBar(props: InputBarProps) {
 					focused
 					flexGrow={1}
 					cursorColor={accent}
+					cursorStyle={termuxCursorStyle}
 					minHeight={1}
 					maxHeight={5}
 					wrapMode="word"

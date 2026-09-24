@@ -4,6 +4,7 @@ import type { ChoiceContext } from "@opentui-ui/dialog";
 import { useDialogKeyboard } from "@opentui-ui/dialog/react";
 import { useMemo, useRef, useState } from "react";
 import { useDialogPalette } from "../../hooks/use-theme";
+import { getTermuxCursorStyle } from "../../utils/termux-cursor-style";
 import {
 	buildCommandPaletteItems,
 	type CommandPaletteResult,
@@ -159,6 +160,7 @@ export function CommandPaletteContent(
 					placeholder="Search actions..."
 					flexGrow={1}
 					focused
+					cursorStyle={getTermuxCursorStyle()}
 				/>
 			</box>
 

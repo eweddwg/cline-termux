@@ -21,6 +21,7 @@ import {
 } from "../../components/tracked-robot";
 import { useTheme } from "../../hooks/use-theme";
 import { getInputRuleColor, getUserMessageBackground } from "../../palette";
+import { getTermuxCursorStyle } from "../../utils/termux-cursor-style";
 import { FIELD_ORDER } from "./fields";
 import {
 	type ClinePassSubscriptionOption,
@@ -343,6 +344,7 @@ export function OnboardingProviderConfigScreen(props: {
 									textColor={defaultFg}
 									focusedTextColor={defaultFg}
 									cursorColor={defaultFg}
+									cursorStyle={getTermuxCursorStyle()}
 									focused={isFocused}
 									flexGrow={1}
 								/>
@@ -789,6 +791,7 @@ export function OnboardingCustomModelIdScreen(props: {
 						textColor={defaultFg}
 						focusedTextColor={defaultFg}
 						cursorColor={defaultFg}
+						cursorStyle={getTermuxCursorStyle()}
 						flexGrow={1}
 						focused
 					/>

@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { useTheme } from "../hooks/use-theme";
+import { getTermuxCursorStyle } from "../utils/termux-cursor-style";
 
 export interface SearchableItem {
 	key: string;
@@ -230,6 +231,7 @@ export function SearchableList(props: {
 }) {
 	const theme = useTheme();
 	const defaultFg = theme.defaultForeground;
+	const termuxCursorStyle = getTermuxCursorStyle();
 	const {
 		items,
 		selected,
@@ -253,6 +255,7 @@ export function SearchableList(props: {
 					textColor={defaultFg}
 					focusedTextColor={defaultFg}
 					cursorColor={defaultFg}
+					cursorStyle={termuxCursorStyle}
 					flexGrow={1}
 					focused
 				/>
