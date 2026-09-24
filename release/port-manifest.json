@@ -17,6 +17,7 @@
   "github": {
     "allowedActiveWorkflows": [
       ".github/workflows/repo-label-issues.yml",
+      ".github/workflows/termux-release.yml",
       ".github/workflows/watch-upstream.yml"
     ]
   },
