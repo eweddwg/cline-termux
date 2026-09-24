@@ -95,6 +95,18 @@ jobs:
           CLI="${{ steps.version.outputs.cli }}"
           TARBALL="release/dist/cline-termux-aarch64-${TAG}.tar.gz"
           SHA="release/dist/cline-termux-aarch64-${TAG}.tar.gz.sha256"
+          NOTES="$RUNNER_TEMP/termux-release-notes.md"
+
+          cat > "$NOTES" <<EOF
+          **Cline Termux** — Android/ARM64 release built on GitHub Actions.
+
+          - Tarball: \`cline-termux-aarch64-${TAG}.tar.gz\` (deterministic, checksummed)
+          - Install on a phone:
+            \`curl -fsSL https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/main/release/install-cline-termux.sh | bash -s -- --repo ${GITHUB_REPOSITORY} --version ${TAG}\`
+          - Upstream Cline CLI: ${CLI}
+
+          Published from commit ${GITHUB_SHA}.
+          EOF
 
           if gh release view "$TAG" >/dev/null 2>&1; then
             echo "Release $TAG already exists; deleting to recreate."
@@ -103,14 +115,4 @@ jobs:
 
           gh release create "$TAG" "$TARBALL" "$SHA" \
             --title "$TAG" \
-            --notes "$(cat <<EOF
-**Cline Termux** — Android/ARM64 release built on GitHub Actions.
-
-- Tarball: \`cline-termux-aarch64-${TAG}.tar.gz\` (deterministic, checksummed)
-- Install on a phone:
-  \`curl -fsSL https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/main/release/install-cline-termux.sh | bash -s -- --repo ${GITHUB_REPOSITORY} --version ${TAG}\`
-- Upstream Cline CLI: ${CLI}
-
-Published from commit ${GITHUB_SHA}.
-EOF
-          )"
+            --notes-file "$NOTES"
