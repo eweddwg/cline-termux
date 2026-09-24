@@ -12,6 +12,8 @@ import {
 	readImmediateImagePasteAttachment,
 } from "../utils/image-paste";
 import { shouldCompactPastedText } from "../utils/pasted-snippets";
+// TERMUX FORK ADDITION: Override the default block cursor with a thin line
+// on Termux. See termux-cursor-style.ts for full documentation.
 import { getTermuxCursorStyle } from "../utils/termux-cursor-style";
 
 export type TextareaHandle = Pick<
@@ -74,6 +76,9 @@ export function InputBar(props: InputBarProps) {
 	} = props;
 	const localRef = useRef<TextareaHandle | null>(null);
 	const inputRef = props.textareaRef ?? localRef;
+	// TERMUX FORK: Returns { style: "line", blinking: true } on Termux,
+	// or undefined elsewhere (letting opentui use its default block cursor).
+	// This value is passed to the <input cursorStyle={termuxCursorStyle}> below.
 	const termuxCursorStyle = getTermuxCursorStyle();
 
 	const onSubmitRef = useRef(onSubmit);

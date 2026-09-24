@@ -1,26 +1,67 @@
 #!/usr/bin/env node
 /**
- * Bun CLI shim for Termux/Android.
+ * ==========================================================================
+ * BUN SHIM FOR TERMUX / ANDROID
+ * ==========================================================================
  *
- * Upstream Bun cannot read the current working directory in the Android
- * sandbox (oven-sh/bun#30859), so `bun run`, `bun -F <filter> <script>`,
- * `bun x` and `bun <bin>` all abort with CouldntReadCurrentDirectory before
- * they do any work. `bun install`, `bun test` and running a file directly
- * (`bun file.ts`) still work.
+ * WHY THIS FILE EXISTS:
+ * This fork (cline-termux) ports the Cline CLI to run natively inside Termux
+ * on Android phones. The upstream release pipeline (`manage.sh candidate`)
+ * relies heavily on `bun run`, `bun -F`, and `bun x` commands to execute
+ * build gates (typecheck, tests, bundling). However, Bun has a critical bug
+ * on Android (oven-sh/bun#30859): it cannot read the current working directory
+ * inside the Android sandbox, causing `bun run`, `bun -F`, `bun x`, and bare
+ * bin invocations (`bun tsc`) to immediately abort with the error
+ * "CouldntReadCurrentDirectory" before doing any work.
  *
- * The release manager has to run `bun run build:sdk`, `bun -F @cline/cli
- * typecheck` and friends, so this shim re-implements the broken subset on top
- * of the parts that work:
+ * WHAT STILL WORKS IN REAL BUN ON ANDROID:
+ * - `bun install` (with --backend=copyfile, since hardlinks are denied)
+ * - `bun test`
+ * - Running files directly: `bun file.ts`, `bun script.mjs`
  *
- *   bun install ...              -> real bun with --backend=copyfile
- *                                   (Android denies the hardlink install)
- *   bun run <script> [args]      -> run the package.json script via bash
- *   bun -F <filter> <script>     -> resolve workspace packages, run script
- *   bun x <bin> / bun <bin>      -> exec node_modules/.bin/<bin>
- *   bun <file.ts> / other cmds   -> real bun, untouched
+ * WHAT THIS SHIM DOES:
+ * It acts as a drop-in replacement for the `bun` binary during the release
+ * candidate flow. The release manager (`manage.sh`) copies this file to a
+ * temp directory, names it `bun`, makes it executable, and prepends that
+ * directory to PATH. When scripts internally call `bun run ...`, they hit
+ * this shim instead of the broken real Bun.
  *
- * Anything not listed is delegated to the real Bun binary, so the shim never
- * silently swallows an invocation it does not understand.
+ * ROUTING LOGIC:
+ *   bun install ...              -> real bun + injects --backend=copyfile
+ *                                   (Android filesystem denies hardlinks,
+ *                                   copyfile is the only working backend)
+ *   bun run <script> [args]      -> reads package.json "scripts" section,
+ *                                   extracts the command string, executes
+ *                                   it via bash with node_modules/.bin on PATH
+ *   bun -F <filter> <script>     -> resolves monorepo workspace packages
+ *                                   matching the filter, cd's into each,
+ *                                   runs the script via bash (same as above)
+ *   bun x <bin> / bun <bin>      -> finds <bin> in node_modules/.bin/
+ *                                   walking up the directory tree, spawns it
+ *   bun <file.ts> / other cmds   -> passes through to real bun untouched
+ *
+ * ENVIRONMENT VARIABLES REQUIRED:
+ *   CLINE_TERMUX_REAL_BUN       - absolute path to the actual bun binary
+ *                                  (e.g., /data/data/com.termux/files/usr/opt/bun-android-ffi/current/bun)
+ *   CLINE_TERMUX_SHIM_BIN_DIR   - directory where this shim lives, so nested
+ *                                  `bun run` calls find the shim first in PATH
+ *
+ * IMPORTANT DESIGN DECISIONS:
+ * - We use Node.js (#!/usr/bin/env node) rather than Bun to run this shim,
+ *   because Bun itself is broken on Android for process management.
+ * - Scripts extracted from package.json are executed via `bash -c` with
+ *   spawnSync, using stdio:"inherit" so output streams directly to terminal.
+ * - The PATH for spawned scripts is augmented: all node_modules/.bin dirs
+ *   from cwd up to root are prepended, plus the shim's own directory, so
+ *   recursive `bun run` calls inside scripts keep hitting this shim.
+ * - Unknown subcommands fall through to real bun, so we never silently
+ *   break something we don't understand.
+ *
+ * HOW IT CONNECTS TO manage.sh:
+ *   manage.sh:provision_android_bun() copies this file, sets env vars.
+ *   manage.sh:candidate_release() uses $bun_bin (pointing to shim) for gates.
+ *   See release/manage.sh lines ~631-658 and ~1049-1055.
+ * ==========================================================================
  */
 import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";

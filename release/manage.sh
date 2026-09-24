@@ -636,9 +636,27 @@ is_android_host() {
 	[ "$(uname -o 2>/dev/null || true)" = "Android" ]
 }
 
-# Installs the Bun shim that re-implements the Bun CLI subset Android breaks,
-# and exposes it as `bun` on PATH so scripts that spawn `bun` themselves keep
-# working. Sets ANDROID_BUN_SHIM and ANDROID_GATE_PATH.
+# ==================================================================
+# PROVISION ANDROID BUN SHIM
+# ==================================================================
+# WHY: On Android/Termux, `bun run`, `bun -F`, `bun x` are broken due to
+# oven-sh/bun#30859 (Bun can't read cwd in Android sandbox). The release
+# gates need these commands to work. This function installs a Node.js-based
+# shim (release/android-bun/bun-shim.mjs) that intercepts broken bun
+# subcommands and re-implements them using bash + node.
+#
+# HOW IT WORKS:
+# 1. Copies bun-shim.mjs to a temp directory and renames it to "bun"
+# 2. Makes it executable (it has #!/usr/bin/env node shebang)
+# 3. Sets CLINE_TERMUX_REAL_BUN so the shim knows where actual bun is
+# 4. Sets CLINE_TERMUX_SHIM_BIN_DIR so nested calls find the shim
+# 5. Exports ANDROID_GATE_PATH = shim_dir:$PATH
+#    When gates run with PATH="$android_gate_path", any `bun` call hits
+#    our shim first, not the broken real binary.
+#
+# CALLED BY: candidate_release() when is_android_host returns true.
+# See release/android-bun/bun-shim.mjs for the full routing logic.
+# ==================================================================
 provision_android_bun() {
 	local worktree="$1"
 	local shim_dir="$2"
@@ -1059,26 +1077,72 @@ candidate_release() {
 	[ -z "$(git -C "$worktree" diff --name-only --diff-filter=U)" ] \
 		|| fail "unresolved merge conflicts remain"
 
-	# Port gates. Upstream's own CI already covers the merged CLI changes, so
-	# this only verifies what the port itself can break: the manager scripts,
-	# the Termux TUI additions, the CLI type surface, and the bundle the
-	# release tarball is built from.
+	# ==================================================================
+	# PORT GATES (simplified for Termux/Android)
+	# ==================================================================
+	# CONTEXT FOR AI ASSISTANTS / NEW CONTRIBUTORS:
+	# This fork ports Cline CLI to run on Android/Termux. The upstream
+	# cline/cline repo already runs its own CI (tests, typechecks, builds)
+	# before merging to main. We don't need to re-verify their code.
+	#
+	# What we DO need to verify is our port-specific additions:
+	# 1. Our release manager scripts still work (test-manager-downloads.sh)
+	# 2. TypeScript types are valid for our Termux-specific files (typecheck)
+	# 3. Our custom unit tests pass (termux-unit via vitest)
+	# 4. The CLI bundle builds successfully (cli-build)
+	#
+	# WHY WE REMOVED SOME UPSTREAM GATES:
+	# The original port ran ALL upstream gates including build:sdk (5 packages),
+	# test:e2e:cli:tui (pseudo-terminal tests), etc. These fail on Android
+	# because Bun's process management is broken (oven-sh/bun#30859) and
+	# e2e terminal tests aren't designed for phone environments. Since upstream
+	# CI already validates those, running them here is redundant and blocks
+	# releases for reasons unrelated to our port.
+	#
+	# HOW THE SHIM WORKS HERE:
+	# On Android, $bun_bin points to our bun-shim.mjs (not real bun).
+	# $android_gate_path prepends the shim directory to PATH.
+	# When manage.sh runs `$bun_bin -F @cline/cli typecheck`, the shim
+	# intercepts the `-F` flag, finds the workspace package, reads its
+	# package.json script, and executes it via bash+node instead of
+	# broken bun internals. See release/android-bun/bun-shim.mjs.
+	#
+	# FLAGS:
+	# --skip-gates : bypass ALL gates, go straight to tarball + publish.
+	#                Use when you've manually verified or need a fast hotfix.
+	# --no-device  : skip SSH-based phone testing stages (handled elsewhere
+	#                in this function, not related to gates).
+	# ==================================================================
 	if [ "$skip_gates" = true ]; then
 		warn "--skip-gates: publishing without running any port gate"
 	else
 		# tsc needs more than the Node default heap on a phone-sized build;
 		# the device in the port manifest has ~5 GB of RAM.
 		local gate_node_options="${NODE_OPTIONS:-} --max-old-space-size=2560"
+
+		# Gate 1: Verify our release manager download scripts work
 		run_gate "$log_dir" release-manager \
 			env TMPDIR="$candidate_temp" bash "$worktree/release/test-manager-downloads.sh"
+
+		# Gate 2: TypeScript type checking for CLI (including our Termux files)
+		# Uses bun-shim on Android to route `bun -F @cline/cli typecheck`
+		# through bash+node instead of broken bun process management
 		run_gate "$log_dir" cli-typecheck \
 			env TMPDIR="$candidate_temp" PATH="$android_gate_path" \
 			NODE_OPTIONS="$gate_node_options" \
 			bash -c "cd '$worktree' && '$bun_bin' -F @cline/cli typecheck"
+
+		# Gate 3: Run ONLY our Termux-specific unit tests (cursor style,
+		# renderer options, touch scroll, dialog safe area).
+		# Note: we use `node ... vitest.mjs run` directly instead of
+		# `bun test` to avoid bun routing issues on Android.
 		run_gate "$log_dir" termux-unit \
 			env TMPDIR="$candidate_temp" PATH="$android_gate_path" \
 			NODE_OPTIONS="$gate_node_options" \
 			bash -c "cd '$worktree' && node node_modules/vitest/vitest.mjs run apps/cli/src/tui/utils"
+
+		# Gate 4: Build the CLI bundle that goes into the release tarball
+		# Uses bun-shim on Android to route `bun -F @cline/cli build`
 		run_gate "$log_dir" cli-build \
 			env TMPDIR="$candidate_temp" PATH="$android_gate_path" \
 			NODE_OPTIONS="$gate_node_options" \
