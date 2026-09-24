@@ -53,6 +53,13 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
 
+      - name: Install system build dependencies
+        # release/build-termux-release.sh requires ripgrep (rg) and patchelf,
+        # which are not present on the default ubuntu-latest image.
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ripgrep patchelf
+
       - name: Resolve release version from port-manifest
         id: version
         run: |
