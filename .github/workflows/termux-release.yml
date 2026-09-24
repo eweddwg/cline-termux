@@ -137,3 +137,31 @@ jobs:
           gh release create "$TAG" "$TARBALL" "$SHA" \
             --title "$TAG" \
             --notes-file "$NOTES"
+
+      - name: Commit release marker to history
+        # Makes the release visible in the main-branch git log as a
+        # "release: vX.Y.Z-termux.N" commit instead of only on the Releases page.
+        # release/published-versions.txt is intentionally NOT in the workflow's
+        # push `paths`, so this commit cannot re-trigger the workflow (no loop).
+        # continue-on-error: the release is already published at this point; a
+        # marker-push failure (e.g. GITHUB_TOKEN lacking push rights) must not
+        # turn the whole run red.
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          TAG="${{ steps.version.outputs.tag }}"
+          CLI="${{ steps.version.outputs.cli }}"
+          F="release/published-versions.txt"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          printf '%s\t%s\t%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$TAG" "$CLI" >> "$F"
+          git add "$F"
+          if git diff --cached --quiet; then
+            echo "No change to $F (version already recorded); nothing to commit."
+          else
+            git commit -m "release: $TAG (cli v$CLI)"
+            git push origin HEAD:main
+            echo "Pushed release marker commit for $TAG"
+          fi
