@@ -10,6 +10,25 @@ This repository packages the upstream Cline CLI for Termux and adds the small
 runtime/UX pieces needed for a phone-native terminal experience. It is not an
 official Cline release.
 
+## Features
+
+- **Native Termux install** — drops into `$PREFIX` (bin/opt layout), no wrapper
+  hacks; `cline` and `cline --tui` just work on Android `aarch64`.
+- **CI-built releases** — tarballs are built entirely on GitHub Actions (no
+  phone needed as a build input), checksummed, and published as GitHub
+  releases (`v3.0.64-termux.1`).
+- **Versioned layout with rollback** — each release lives in its own
+  `$PREFIX/opt/cline-termux/<version>` tree; `current` points at the active one
+  and older versions are kept as an offline rollback path (`--keep`, `--no-prune`).
+- **Real Android OpenTUI** — a genuine Bionic `@opentui/core-android-arm64`
+  built with Zig + Android NDK (no Linux prebuilt aliased as Android), with
+  heap pointer-tagging disabled in a constructor.
+- **Bun FFI runtime** — bundled `bun-ffi` bridge so OpenTUI's `dlopen()` path
+  works even though official Bun Android has TinyCC disabled; it does not
+  replace `$PREFIX/bin/bun`.
+- **Version rollback & cache hygiene** — rollbacks and the per-release
+  transpiler cache keep disk usage under control (no 40 MB `~/.bun` leftovers).
+
 ![Cline TUI running natively in Termux on a Samsung S25 Ultra](docs/images/cline-termux-tui.png)
 
 Current port:
