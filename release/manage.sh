@@ -53,9 +53,11 @@ Commands:
   inspect CLI_TAG
       Read-only review of one next upstream CLI release.
 
-  candidate CLI_TAG [--revision N] [--host SSH_HOST]
+  candidate CLI_TAG [--revision N] [--host SSH_HOST] [--no-device]
       Merge exactly one release in an isolated worktree, run source and package
       gates, publish a prerelease, and install that exact tag on the test phone.
+      --no-device skips the SSH device stages (sandbox install, acceptance,
+      published-prerelease install) and publishes the candidate without them.
 
   promote RELEASE_TAG --confirm-manual-test [--host SSH_HOST]
       Fast-forward main to the tested candidate and promote the unchanged
@@ -905,7 +907,7 @@ install_published_candidate() {
 candidate_release() {
 	local target_tag="$1"
 	shift
-	local revision=1 host="$DEFAULT_HOST"
+	local revision=1 host="$DEFAULT_HOST" use_device=true
 	while [ "$#" -gt 0 ]; do
 		case "$1" in
 			--revision)
@@ -918,6 +920,10 @@ candidate_release() {
 				host="${2:-}"
 				shift 2
 				;;
+			--no-device)
+				use_device=false
+				shift
+				;;
 			*) fail "unknown candidate option: $1" ;;
 		esac
 	done
@@ -925,7 +931,11 @@ candidate_release() {
 		''|*[!0-9]*) fail "--revision must be a positive integer" ;;
 	esac
 	[ "$revision" -gt 0 ] || fail "--revision must be a positive integer"
-	for required in cmp curl df gh scp sha256sum ssh timeout unzip; do
+	local required_commands="cmp curl df gh sha256sum timeout unzip"
+	if [ "$use_device" = true ]; then
+		required_commands="$required_commands scp ssh"
+	fi
+	for required in $required_commands; do
 		require_command "$required"
 	done
 	require_temp_space
@@ -1019,7 +1029,11 @@ candidate_release() {
 			--release "$release_tag" --skip-build
 	cp "$worktree/release/install-cline-termux.sh" "$candidate_dir/install-cline-termux.sh"
 	cp "$worktree/release/test-installed-termux.sh" "$candidate_dir/test-installed-termux.sh"
-	phone_local_bundle_test "$host" "$candidate_dir" "$release_tag"
+	if [ "$use_device" = true ]; then
+		phone_local_bundle_test "$host" "$candidate_dir" "$release_tag"
+	else
+		warn "--no-device: skipping the unpublished package device test"
+	fi
 
 	info "Publishing $release_tag as a prerelease..."
 	git -C "$worktree" tag -a "$release_tag" -m "Cline Termux $release_tag" "$candidate_commit"
@@ -1043,21 +1057,31 @@ candidate_release() {
 		--latest=false \
 		--title "Cline Termux $release_tag" \
 		--notes-file "$notes_file"
-	install_published_candidate "$host" "$release_tag" "$cli_version"
+	if [ "$use_device" = true ]; then
+		install_published_candidate "$host" "$release_tag" "$cli_version"
+	else
+		warn "--no-device: skipping published prerelease install and acceptance"
+	fi
 
 	cleanup_candidate_run "$worktree" "$branch" "$candidate_temp"
 	trap - EXIT INT TERM
 	prune_local_candidates || warn "local candidate cleanup failed; the release is unaffected"
 	echo
-	ok "$release_tag is installed on $host and ready for manual testing"
-	echo "Please test on the S25 Ultra:"
-	echo "  1. Tap the input box and confirm the IME opens."
-	echo "  2. Finger-scroll the transcript."
-	echo "  3. Open /settings, /model, and /history with the IME visible."
-	echo "  4. Send one real prompt and complete a short conversation."
-	echo
-	echo "After that passes:"
-	echo "  bash release/manage.sh promote $release_tag --confirm-manual-test"
+	if [ "$use_device" = true ]; then
+		ok "$release_tag is installed on $host and ready for manual testing"
+		echo "Please test on the S25 Ultra:"
+		echo "  1. Tap the input box and confirm the IME opens."
+		echo "  2. Finger-scroll the transcript."
+		echo "  3. Open /settings, /model, and /history with the IME visible."
+		echo "  4. Send one real prompt and complete a short conversation."
+		echo
+		echo "After that passes:"
+		echo "  bash release/manage.sh promote $release_tag --confirm-manual-test"
+	else
+		ok "$release_tag prerelease published without device testing"
+		echo "Manual device testing is still required before promotion:"
+		echo "  bash release/manage.sh promote $release_tag --confirm-manual-test"
+	fi
 }
 
 align_main_for_promotion() {
